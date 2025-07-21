@@ -1,0 +1,589 @@
+import React, { useState, useEffect, useCallback } from 'react';
+
+// Component for the main House Moving Finance Calculator
+const HouseMoveCalculator = ({ setView, sharedOutstandingMortgage, setSharedOutstandingMortgage }) => {
+  // State for Property Being Sold
+  const [salePriceSold, setSalePriceSold] = useState('');
+  const [outstandingMortgage, setOutstandingMortgage] = useState('');
+  const [moneyFromSale, setMoneyFromSale] = useState(0);
+
+  // State to track if the user has manually entered the outstanding mortgage
+  const [hasUserManuallySetOutstandingMortgage, setHasUserManuallySetOutstandingMortgage] = useState(false);
+
+  // Effect to set outstanding mortgage from shared state if not manually set
+  useEffect(() => {
+    if (sharedOutstandingMortgage !== null && !hasUserManuallySetOutstandingMortgage) {
+      setOutstandingMortgage(sharedOutstandingMortgage.toFixed(2));
+    }
+  }, [sharedOutstandingMortgage, hasUserManuallySetOutstandingMortgage]);
+
+  // Handler for outstanding mortgage input change
+  const handleOutstandingMortgageChange = useCallback((e) => {
+    setOutstandingMortgage(e.target.value);
+    setHasUserManuallySetOutstandingMortgage(true); // User has manually interacted
+  }, []);
+
+  // State for Deposit Allocation
+  const [depositAmount, setDepositAmount] = useState(0);
+  const [hasUserManuallySetDeposit, setHasUserManuallySetDeposit] = useState(false);
+
+  // State for Property Being Bought
+  const [salePriceBought, setSalePriceBought] = useState('');
+  const [additionalBorrowing, setAdditionalBorrowing] = useState('');
+  const [mortgageTerm, setMortgageTerm] = useState(25); // Default to 25 years
+  const [interestRate, setInterestRate] = useState(3.00); // Default to 3.00%
+  const [isMainResidence, setIsMainResidence] = useState(true); // Default to main residence
+  const [isFirstTimeBuyer, setIsFirstTimeBuyer] = useState(false); // Default to not first time buyer
+
+  // New states for age-based mortgage term calculation
+  const [currentAge, setCurrentAge] = useState('');
+  const [retirementAge, setRetirementAge] = useState('');
+  const [useAgeForMortgageTerm, setUseAgeForMortgageTerm] = useState(false);
+
+  // Calculated Outputs
+  const [mortgageRequired, setMortgageRequired] = useState(0);
+  const [ltv, setLtv] = useState(0);
+  const [stampDuty, setStampDuty] = useState(0);
+  const [monthlyMortgageCost, setMonthlyMortgageCost] = useState(0);
+  const [cashLeftOverOrAdded, setCashLeftOverOrAdded] = useState(0);
+
+  // Effect 1: Calculate money from sale
+  useEffect(() => {
+    const soldPrice = parseFloat(salePriceSold) || 0;
+    const outstanding = parseFloat(outstandingMortgage) || 0;
+    const calculatedMoneyFromSale = Math.max(0, soldPrice - outstanding);
+    setMoneyFromSale(calculatedMoneyFromSale);
+  }, [salePriceSold, outstandingMortgage]);
+
+  // Effect 2: Manage depositAmount based on moneyFromSale and user interaction
+  useEffect(() => {
+    if (moneyFromSale === 0) {
+      setDepositAmount(0);
+      setHasUserManuallySetDeposit(false);
+    } else if (!hasUserManuallySetDeposit) {
+      setDepositAmount(moneyFromSale);
+    } else if (depositAmount > moneyFromSale) {
+      setDepositAmount(moneyFromSale);
+    }
+  }, [moneyFromSale, hasUserManuallySetDeposit, depositAmount]);
+
+  // Effect to calculate mortgage required, LTV, stamp duty, and cash left over/added
+  useEffect(() => {
+    const boughtPrice = parseFloat(salePriceBought) || 0;
+    const deposit = parseFloat(depositAmount) || 0;
+    const additional = parseFloat(additionalBorrowing) || 0;
+
+    const calculatedMortgageRequired = Math.max(0, boughtPrice - deposit - additional);
+    setMortgageRequired(calculatedMortgageRequired);
+
+    const calculatedLtv = boughtPrice > 0 ? (calculatedMortgageRequired / boughtPrice) * 100 : 0;
+    setLtv(calculatedLtv);
+
+    let calculatedStampDuty = 0;
+    if (boughtPrice > 0 && isMainResidence) {
+      if (boughtPrice > 250000) {
+        calculatedStampDuty += Math.min(boughtPrice - 250000, 675000) * 0.05;
+      }
+      if (boughtPrice > 925000) {
+        calculatedStampDuty += Math.min(boughtPrice - 925000, 575000) * 0.10;
+      }
+      if (boughtPrice > 1500000) {
+        calculatedStampDuty += (boughtPrice - 1500000) * 0.12;
+      }
+    }
+    if (isFirstTimeBuyer && boughtPrice <= 425000) {
+        calculatedStampDuty = 0;
+    } else if (isFirstTimeBuyer && boughtPrice > 425000 && boughtPrice <= 625000) {
+        calculatedStampDuty = (boughtPrice - 425000) * 0.05;
+    }
+
+    setStampDuty(calculatedStampDuty);
+
+    const calculatedCashLeftOverOrAdded = moneyFromSale - deposit;
+    setCashLeftOverOrAdded(calculatedCashLeftOverOrAdded);
+
+  }, [salePriceBought, depositAmount, additionalBorrowing, moneyFromSale, isMainResidence, isFirstTimeBuyer]);
+
+  // Effect to calculate mortgage term based on age
+  useEffect(() => {
+    if (useAgeForMortgageTerm) {
+      const current = parseInt(currentAge) || 0;
+      const retirement = parseInt(retirementAge) || 0;
+      const calculatedTerm = Math.max(0, retirement - current);
+      setMortgageTerm(calculatedTerm);
+    }
+  }, [currentAge, retirementAge, useAgeForMortgageTerm]);
+
+  // Effect to calculate monthly mortgage cost
+  useEffect(() => {
+    const principal = mortgageRequired;
+    const annualRate = interestRate / 100;
+    const monthlyRate = annualRate / 12;
+    const numberOfPayments = mortgageTerm * 12;
+
+    if (principal > 0 && monthlyRate > 0 && numberOfPayments > 0) {
+      const numerator = principal * monthlyRate * Math.pow((1 + monthlyRate), numberOfPayments);
+      const denominator = Math.pow((1 + monthlyRate), numberOfPayments) - 1;
+      setMonthlyMortgageCost(numerator / denominator);
+    } else {
+      setMonthlyMortgageCost(0);
+    }
+  }, [mortgageRequired, mortgageTerm, interestRate]);
+
+  // Handler for deposit amount adjustments (buttons)
+  const handleDepositAdjustment = useCallback((adjustment) => {
+    setDepositAmount(prev => {
+      const newAmount = Math.max(0, Math.min(moneyFromSale, prev + adjustment));
+      return newAmount;
+    });
+    setHasUserManuallySetDeposit(true);
+  }, [moneyFromSale]);
+
+  // Handler for direct deposit input change
+  const handleDepositInputChange = useCallback((e) => {
+    const value = parseFloat(e.target.value) || 0;
+    setDepositAmount(Math.max(0, Math.min(moneyFromSale, value)));
+    setHasUserManuallySetDeposit(true);
+  }, [moneyFromSale]);
+
+  // Determine if deposit controls should be disabled
+  const isDepositControlsDisabled = moneyFromSale <= 0;
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8">
+      <button
+        onClick={() => setView('mortgageCalculator')}
+        className="mb-6 px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors shadow-lg font-semibold"
+      >
+        Go to Outstanding Mortgage Calculator
+      </button>
+
+      <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-6 text-center">
+        House Moving Finance Calculator
+      </h1>
+
+      {/* Property Being Sold Section */}
+      <div className="mb-8 p-4 border border-gray-200 rounded-lg bg-blue-50">
+        <h2 className="text-2xl font-semibold text-blue-700 mb-4">Property Being Sold</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label htmlFor="salePriceSold" className="block text-sm font-medium text-gray-700 mb-1">
+              Sale Price (£)
+            </label>
+            <input
+              type="number"
+              id="salePriceSold"
+              value={salePriceSold}
+              onChange={(e) => setSalePriceSold(e.target.value)}
+              placeholder="e.g., 350000"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="outstandingMortgage" className="block text-sm font-medium text-gray-700 mb-1">
+              Outstanding Mortgage (£)
+            </label>
+            <input
+              type="number"
+              id="outstandingMortgage"
+              value={outstandingMortgage}
+              onChange={handleOutstandingMortgageChange} // Use the new handler
+              placeholder="e.g., 150000"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </div>
+        <div className="text-lg font-medium text-gray-800 bg-blue-100 p-3 rounded-md">
+          Money from Sale (after mortgage): <span className="font-bold">£{moneyFromSale.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+      </div>
+
+      {/* Deposit Allocation Section */}
+      <div className="mb-8 p-4 border border-gray-200 rounded-lg bg-green-50">
+        <h2 className="text-2xl font-semibold text-green-700 mb-4">Deposit Allocation</h2>
+        {isDepositControlsDisabled && (
+          <p className="text-sm text-red-600 mb-3">
+            Please enter the 'Sale Price' and 'Outstanding Mortgage' for the property being sold first to enable deposit allocation.
+          </p>
+        )}
+        <div className="flex flex-col sm:flex-row items-center gap-4 mb-4">
+          <label htmlFor="depositAmount" className="block text-sm font-medium text-gray-700 sr-only">
+            Deposit Amount (£)
+          </label>
+          <input
+            type="number"
+            id="depositAmount"
+            value={depositAmount}
+            onChange={handleDepositInputChange}
+            className="w-full sm:w-auto flex-grow p-2 border border-gray-300 rounded-md shadow-sm text-lg text-center font-bold focus:ring-green-500 focus:border-green-500"
+            disabled={isDepositControlsDisabled}
+          />
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              onClick={() => handleDepositAdjustment(-10000)}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isDepositControlsDisabled}
+            >
+              -£10k
+            </button>
+            <button
+              onClick={() => handleDepositAdjustment(-5000)}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isDepositControlsDisabled}
+            >
+              -£5k
+            </button>
+            <button
+              onClick={() => handleDepositAdjustment(5000)}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isDepositControlsDisabled}
+            >
+              +£5k
+            </button>
+            <button
+              onClick={() => handleDepositAdjustment(10000)}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isDepositControlsDisabled}
+            >
+              +£10k
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Property Being Bought Section */}
+      <div className="mb-8 p-4 border border-gray-200 rounded-lg bg-purple-50">
+        <h2 className="text-2xl font-semibold text-purple-700 mb-4">Property Being Bought</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label htmlFor="salePriceBought" className="block text-sm font-medium text-gray-700 mb-1">
+              Sale Price (£)
+            </label>
+            <input
+              type="number"
+              id="salePriceBought"
+              value={salePriceBought}
+              onChange={(e) => setSalePriceBought(e.target.value)}
+              placeholder="e.g., 400000"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="additionalBorrowing" className="block text-sm font-medium text-gray-700 mb-1">
+              Additional Borrowing (£)
+            </label>
+            <input
+              type="number"
+              id="additionalBorrowing"
+              value={additionalBorrowing}
+              onChange={(e) => setAdditionalBorrowing(e.target.value)}
+              placeholder="e.g., 20000"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+            />
+          </div>
+
+          {/* Mortgage Term Calculation Options */}
+          <div className="col-span-1 md:col-span-2">
+            <div className="flex items-center mb-2">
+              <input
+                type="checkbox"
+                id="useAgeForMortgageTerm"
+                checked={useAgeForMortgageTerm}
+                onChange={(e) => setUseAgeForMortgageTerm(e.target.checked)}
+                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+              />
+              <label htmlFor="useAgeForMortgageTerm" className="ml-2 block text-sm font-medium text-gray-700">
+                Calculate Mortgage Term based on Age
+              </label>
+            </div>
+
+            {useAgeForMortgageTerm ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="currentAge" className="block text-sm font-medium text-gray-700 mb-1">
+                    Current Age (Years)
+                  </label>
+                  <input
+                    type="number"
+                    id="currentAge"
+                    value={currentAge}
+                    onChange={(e) => setCurrentAge(e.target.value)}
+                    placeholder="e.g., 30"
+                    min="18"
+                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="retirementAge" className="block text-sm font-medium text-gray-700 mb-1">
+                    Planned Retirement Age (Years)
+                  </label>
+                  <input
+                    type="number"
+                    id="retirementAge"
+                    value={retirementAge}
+                    onChange={(e) => setRetirementAge(e.target.value)}
+                    placeholder="e.g., 65"
+                    min="18"
+                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="mortgageTerm" className="block text-sm font-medium text-gray-700 mb-1">
+                  Mortgage Term (Years): <span className="font-bold">{mortgageTerm}</span>
+                </label>
+                <input
+                  type="range"
+                  id="mortgageTerm"
+                  value={mortgageTerm}
+                  onChange={(e) => setMortgageTerm(parseInt(e.target.value))}
+                  min="5"
+                  max="40"
+                  step="1"
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Interest Rate Slider */}
+          <div>
+            <label htmlFor="interestRate" className="block text-sm font-medium text-gray-700 mb-1">
+              Interest Rate (%): <span className="font-bold">{interestRate.toFixed(2)}</span>
+            </label>
+            <input
+              type="range"
+              id="interestRate"
+              value={interestRate}
+              onChange={(e) => setInterestRate(parseFloat(e.target.value))}
+              min="1.00"
+              max="10.00"
+              step="0.25"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-4 mt-4">
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="isMainResidence"
+              checked={isMainResidence}
+              onChange={(e) => setIsMainResidence(e.target.checked)}
+              className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="isMainResidence" className="ml-2 block text-sm font-medium text-gray-700">
+              Main Residential Property
+            </label>
+          </div>
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="isFirstTimeBuyer"
+              checked={isFirstTimeBuyer}
+              onChange={(e) => setIsFirstTimeBuyer(e.target.checked)}
+              className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="isFirstTimeBuyer" className="ml-2 block text-sm font-medium text-gray-700">
+              First Time Buyer
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Outputs Section */}
+      <div className="p-4 border border-gray-200 rounded-lg bg-yellow-50">
+        <h2 className="text-2xl font-semibold text-yellow-700 mb-4">Financial Overview</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-lg">
+          <div className="bg-yellow-100 p-3 rounded-md">
+            <span className="font-medium text-gray-800">Mortgage Required:</span> <span className="font-bold">£{mortgageRequired.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div className="bg-yellow-100 p-3 rounded-md">
+            <span className="font-medium text-gray-800">LTV:</span> <span className="font-bold">{ltv.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>
+          </div>
+          <div className="bg-yellow-100 p-3 rounded-md">
+            <span className="font-medium text-gray-800">Estimated Stamp Duty:</span> <span className="font-bold">£{stampDuty.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div className="bg-yellow-100 p-3 rounded-md">
+            <span className="font-medium text-gray-800">Monthly Mortgage Cost:</span> <span className="font-bold">£{monthlyMortgageCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div className="bg-yellow-100 p-3 rounded-md col-span-1 sm:col-span-2">
+            <span className="font-medium text-gray-800">Cash Left Over / (Added to Purchase):</span>{' '}
+            <span className={`font-bold ${cashLeftOverOrAdded >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+              £{cashLeftOverOrAdded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Component for the Outstanding Mortgage Calculator
+const OutstandingMortgageCalculator = ({ setView, setSharedOutstandingMortgage }) => {
+  const [currentMortgageValue, setCurrentMortgageValue] = useState('');
+  const [currentMortgageLength, setCurrentMortgageLength] = useState('');
+  const [currentInterestRate, setCurrentInterestRate] = useState('');
+  const [currentRepaymentAmount, setCurrentRepaymentAmount] = useState('');
+  const [yearsUntilSale, setYearsUntilSale] = useState('');
+  const [outstandingBalance, setOutstandingBalance] = useState(0);
+
+  useEffect(() => {
+    const P = parseFloat(currentMortgageValue) || 0; // Original Principal
+    const n_total_months = (parseFloat(currentMortgageLength) || 0) * 12; // Total original payments in months
+    const i_monthly = (parseFloat(currentInterestRate) || 0) / 100 / 12; // Monthly interest rate
+    const p_payments_made = (parseFloat(yearsUntilSale) || 0) * 12; // Payments made until sale
+
+    if (P > 0 && n_total_months > 0 && i_monthly > 0 && p_payments_made >= 0 && p_payments_made <= n_total_months) {
+      // Formula for remaining balance on an amortizing loan
+      const numerator = P * (Math.pow((1 + i_monthly), n_total_months) - Math.pow((1 + i_monthly), p_payments_made));
+      const denominator = Math.pow((1 + i_monthly), n_total_months) - 1;
+      const calculatedBalance = numerator / denominator;
+      setOutstandingBalance(calculatedBalance);
+    } else if (P > 0 && n_total_months > 0 && i_monthly === 0 && p_payments_made >= 0 && p_payments_made <= n_total_months) {
+      // Handle 0% interest rate case
+      const monthlyPaymentIfZeroInterest = P / n_total_months;
+      const remainingPrincipal = P - (monthlyPaymentIfZeroInterest * p_payments_made);
+      setOutstandingBalance(Math.max(0, remainingPrincipal));
+    } else {
+      setOutstandingBalance(0);
+    }
+  }, [currentMortgageValue, currentMortgageLength, currentInterestRate, yearsUntilSale]);
+
+  const handleApplyToMainCalculator = () => {
+    setSharedOutstandingMortgage(outstandingBalance);
+    setView('mainCalculator');
+  };
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8">
+      <button
+        onClick={() => setView('mainCalculator')}
+        className="mb-6 px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors shadow-lg font-semibold"
+      >
+        Go to House Moving Finance Calculator
+      </button>
+
+      <h1 className="text-3xl sm:text-4xl font-bold text-gray-800 mb-6 text-center">
+        Outstanding Mortgage Calculator
+      </h1>
+
+      <div className="mb-8 p-4 border border-gray-200 rounded-lg bg-indigo-50">
+        <h2 className="text-2xl font-semibold text-indigo-700 mb-4">Current Mortgage Details</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label htmlFor="currentMortgageValue" className="block text-sm font-medium text-gray-700 mb-1">
+              Current Mortgage Value (£)
+            </label>
+            <input
+              type="number"
+              id="currentMortgageValue"
+              value={currentMortgageValue}
+              onChange={(e) => setCurrentMortgageValue(e.target.value)}
+              placeholder="e.g., 200000"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="currentMortgageLength" className="block text-sm font-medium text-gray-700 mb-1">
+              Current Mortgage Length (Years)
+            </label>
+            <input
+              type="number"
+              id="currentMortgageLength"
+              value={currentMortgageLength}
+              onChange={(e) => setCurrentMortgageLength(e.target.value)}
+              placeholder="e.g., 25"
+              min="1"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="currentInterestRate" className="block text-sm font-medium text-gray-700 mb-1">
+              Current Interest Rate (%)
+            </label>
+            <input
+              type="number"
+              id="currentInterestRate"
+              value={currentInterestRate}
+              onChange={(e) => setCurrentInterestRate(e.target.value)}
+              placeholder="e.g., 4.5"
+              step="0.01"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="currentRepaymentAmount" className="block text-sm font-medium text-gray-700 mb-1">
+              Current Monthly Repayment (£) (Optional, for reference)
+            </label>
+            <input
+              type="number"
+              id="currentRepaymentAmount"
+              value={currentRepaymentAmount}
+              onChange={(e) => setCurrentRepaymentAmount(e.target.value)}
+              placeholder="e.g., 1056.23"
+              className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+        </div>
+        <div className="mt-4">
+          <label htmlFor="yearsUntilSale" className="block text-sm font-medium text-gray-700 mb-1">
+            Years Until Sale: <span className="font-bold">{yearsUntilSale}</span>
+          </label>
+          <input
+            type="range"
+            id="yearsUntilSale"
+            value={yearsUntilSale}
+            onChange={(e) => setYearsUntilSale(parseInt(e.target.value))}
+            min="0"
+            max={parseFloat(currentMortgageLength) || 30}
+            step="1"
+            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+          />
+        </div>
+      </div>
+
+      {/* Outstanding Balance Output */}
+      <div className="p-4 border border-gray-200 rounded-lg bg-yellow-50">
+        <h2 className="text-2xl font-semibold text-yellow-700 mb-4">Calculated Outstanding Balance</h2>
+        <div className="bg-yellow-100 p-3 rounded-md text-lg font-medium text-gray-800 flex justify-between items-center">
+          <span>Estimated Outstanding Mortgage: <span className="font-bold">£{outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+          <button
+            onClick={handleApplyToMainCalculator}
+            className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={outstandingBalance <= 0}
+          >
+            Apply to Main Calculator
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main App component to handle view switching
+const App = () => {
+  const [view, setView] = useState('mainCalculator');
+  const [sharedOutstandingMortgage, setSharedOutstandingMortgage] = useState(null); // State to share
+
+  return (
+    <div className="min-h-screen bg-gray-100 font-inter flex flex-col items-center">
+      {view === 'mainCalculator' && (
+        <HouseMoveCalculator
+          setView={setView}
+          sharedOutstandingMortgage={sharedOutstandingMortgage}
+          setSharedOutstandingMortgage={setSharedOutstandingMortgage}
+        />
+      )}
+      {view === 'mortgageCalculator' && (
+        <OutstandingMortgageCalculator
+          setView={setView}
+          setSharedOutstandingMortgage={setSharedOutstandingMortgage}
+        />
+      )}
+    </div>
+  );
+};
+
+export default App;
